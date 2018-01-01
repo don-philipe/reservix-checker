@@ -22,51 +22,69 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-$url_base = "http://www.reservix.de/";
-$url_suffix = "";	# insert permalink suffix here. It's something like "tickets-<name-of-concert>-<place-of-concert>-<date-of-concert>/e<id>"
-$url = "$url_base$url_suffix";
-$count = 0;
+# Some API endpoints (to retrieve information about an event)
+# ==================
+#
+# Get the location of the event:
+# https://www.reservix.de/ajax/seating-map/1071977/region
+# 	1071977 is the event ID (see end of permalink to the event)
+#
+# Get information about the pricing of an event:
+# https://www.reservix.de/ajax/seating-map/1071977/pricecategory
+#
+# Get information about the seats of an event:
+# https://www.reservix.de/ajax/seating-map/33590/seat/1071977
+# 	33590 is the location ID of the "Hochschule für Musik Dresden"
+#
 
-$html = @fopen($url, "r");
-if(!$html)
-{
-	$count = "Website not available!";
-}
-else
-{
-	# search for the link (button) to the seat selection:
-	while(!feof($html)) 
-	{
-		$line = fgets($html); 
-		if(preg_match('@http://www\.reservix\.de/reservation/plan_reservation_back\.php\?PHPSESSID=[0-9a-f]+&amp;eventID=[0-9]+&amp;eventGrpID=[0-9]+&amp;presellercheckID=[0-9]@', $line, $hits)) 
-		{
-			$url = $hits[0];
-			break;
-		}
-	}
-	# replace for working url:
-	$url = preg_replace('@amp;@', "", $url);
+$eventID = "1071977";
+$cantbesold = 0;	# number of seats the cant be sold, so remove them from the sum of all seats
 
-	$html = @fopen($url, "r");
-	if(!$html)
-	{
-		$count = "Website not available!";
-	}
-	else
-	{
-		# search occurences of reserved seats:
-		while(!feof($html)) 
-		{
-			$line = fgets($html); 
-			$count = $count + preg_match_all('/class="BG1 ds X1"/', $line, $matches);	# $matches for compatibility with php versions < 5.4.0
-			$count = $count + preg_match_all('/class="ds BG1 X1"/', $line, $matches);	# $matches for compatibility with php versions < 5.4.0
-		}
+$url_base = "https://www.reservix.de/";
+$url_suffix = "tickets-hfmdd-jazz-orchestra-feat-sebastian-merk-in-dresden-hochschule-fuer-musik-konzertsaal-am-25-1-2018/e1071977";	# insert permalink suffix here. It's something like "tickets-<name-of-concert>-<place-of-concert>-<date-of-concert>/e<id>"
+$action_getlocation = "ajax/seating-map/$eventID/region";
 
-		# subtract 5 for the seats for disabled persons (they are reserved everytime):
-		#$count = $count - 5;
+$url = "$url_base$action_getlocation";
+$result = json_decode(postwoparam($url), true);		# second parameter lets json_decode() return an array
+$locationID = $result[0]['id'];
+
+$action_getseats = "ajax/seating-map/$locationID/seat/$eventID";
+$url = "$url_base$action_getseats";
+$result = json_decode(postwoparam($url), true);
+$seats_total = 0;
+$seats_free = 0;
+foreach($result as $item) {
+	$seats_total++;
+	if($item['free']) {
+		$seats_free++;
 	}
 }
-$count = preg_replace('[!0-9]', "", $count);
-echo $count;
+$seats_total = $seats_total - $cantbesold;
+$seats_sold = $seats_total - $seats_free;
 
+echo "seats total: $seats_total";
+echo "\n";
+echo "seats free: $seats_free";
+echo "\n";
+echo "seats sold: $seats_sold";
+
+# the action should be GET here
+function postwoparam($url) {
+	$options = array(
+	    'http' => array(
+		'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+		'method'  => 'POST',
+		'content' => ''
+	    )
+	);
+	$context = stream_context_create($options);
+	$result = file_get_contents($url, false, $context);
+	if ($result === FALSE) {
+		/* Handle error */ 
+	} else {
+		return $result;
+	}
+}
+
+exit();
 ?>
